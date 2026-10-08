@@ -79,6 +79,7 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 #h-heard{font:600 1.05rem/1.3 Bahnschrift,"Segoe UI",system-ui,sans-serif;min-height:1.4em}
 #h-reply{margin-top:8px;color:#8fb3c7;font-size:.9rem;white-space:pre-wrap;max-height:7.5em;overflow:hidden}
 .h-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center}
+#h-know{margin-top:14px;font:.65rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#5f8ba3}
 .h-stats div{border-top:1px solid #1c3850;padding-top:8px}
 .h-stats b{display:block;font:700 1.5rem var(--mono);color:#3fd0ff}
 .h-stats span{font:.6rem var(--mono);letter-spacing:.14em;text-transform:uppercase;color:#7f9aab}
@@ -115,7 +116,7 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 “Luca è urgente”<br>
 “Soluzioni per Luca”<br>
 “Crea scheda cliente per Luca”<br>
-“Com’è andata la giornata?” e qualsiasi domanda<br>“Impara: quando ti dico X rispondi Y”<br>“Modalità HUD” / “Chiudi HUD”<br>“Cambia tono in calmo” / “voce più veloce” / “voce più profonda”</p></details>
+“Com’è andata la giornata?” e qualsiasi domanda<br>“Impara: quando ti dico X rispondi Y”<br>“Modalità HUD” / “Chiudi HUD”<br>“Manda Luca su RepairPro”<br>“Cambia tono in calmo” / “voce più veloce” / “voce più profonda”</p></details>
 <dialog id="dlg"><form id="df">
 <h3>Scheda cliente</h3>
 <label>Cliente<input type="text" id="e-c"></label>
@@ -145,9 +146,16 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 <label><input type="checkbox" id="el-on" style="width:auto"> Usa la voce premium</label>
 <label>Chiave API ElevenLabs<input type="password" id="el-key" placeholder="vuoto = non cambiarla" autocomplete="off"></label>
 <label>ID della voce<input type="text" id="el-vid" autocomplete="off"></label>
+<label>Qualità<select id="el-model"><option value="eleven_flash_v2_5">Flash · veloce, costa circa la metà</option><option value="eleven_multilingual_v2">Multilingual v2 · più espressiva</option></select></label>
+<label><input type="checkbox" id="el-hud" style="width:auto"> Voce premium solo in modalità HUD (risparmia crediti)</label>
+<small id="el-use"></small>
 <h4>Intelligenza artificiale</h4>
+<label>Motore<select id="s-prov"><option value="claude">Claude · a pagamento, più preciso</option><option value="gemini">Gemini · ha un piano gratuito</option></select></label>
 <label>Chiave API<input type="password" id="key" placeholder="sk-ant-… (vuoto = non cambiarla)" autocomplete="off"></label>
 <small id="kst"></small>
+<label>Chiave Gemini<input type="password" id="gkey" placeholder="vuoto = non cambiarla" autocomplete="off"></label>
+<label>Modello Gemini<input type="text" id="gmodel" autocomplete="off"></label>
+<small>Con il piano gratuito Google può usare i testi inviati per migliorare i suoi modelli. Per questo, con Gemini, i nomi dei clienti diventano “Cliente 1, 2…” prima dell’invio e vengono rimessi nella risposta.</small>
 <label>Modello<select id="s-model"><option value="claude-sonnet-5-5">Sonnet 5.5 · più intelligente</option><option value="claude-haiku-4-5-20251001">Haiku 4.5 · più veloce ed economico</option></select></label>
 <h4>Aspetto</h4>
 <label>Tema<select id="s-theme"><option value="auto">Automatico</option><option value="dark">Scuro</option><option value="light">Chiaro</option></select></label>
@@ -163,7 +171,7 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 <div id="hud" hidden>
 <canvas id="cv"></canvas>
 <div class="h-top"><span id="h-hello"></span><button class="act" id="h-x" style="margin:0">Esci</button></div>
-<div class="h-mid"><div id="h-heard"></div><div id="h-reply"></div></div>
+<div class="h-mid"><div id="h-heard"></div><div id="h-reply"></div><div id="h-know"></div></div>
 <div class="h-stats" id="h-stats"></div>
 </div>
 
@@ -171,16 +179,16 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 const $=id=>document.getElementById(id);
 let S={buy:[],rep:[]};
 try{const r=localStorage.getItem('jarvis-negozio');if(r)S=JSON.parse(r)}catch(e){}
-const save=()=>{try{localStorage.setItem('jarvis-negozio',JSON.stringify(S))}catch(e){}};
+const save=()=>{try{localStorage.setItem('jarvis-negozio',JSON.stringify(S))}catch(e){}try{rpSave()}catch(e){}};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
 const NEXT={'in corso':'pronta',pronta:'consegnata',consegnata:'in corso'};
 const MODEL='claude-sonnet-5-5';
 const STILI={formale:'Tono formale e professionale, dai del lei.',amichevole:'Tono amichevole e diretto, dai del tu.',ironico:'Tono sobrio con ironia leggera, da maggiordomo britannico; chiamalo “signore” ogni tanto.'};
-let CFG={name:'Jarvis',alias:'',call:'Alessandro',style:'amichevole',voice:'',rate:1,pitch:1,model:MODEL,theme:'auto',extra:''};
+let CFG={name:'Jarvis',alias:'',call:'Alessandro',style:'amichevole',voice:'',rate:1,pitch:1,model:MODEL,theme:'auto',extra:'',provider:'claude',gkey:'',gmodel:'gemini-3.1-flash-lite-preview'};
 try{Object.assign(CFG,JSON.parse(localStorage.getItem('jarvis-cfg')||'{}'))}catch(e){}
 S.teach=S.teach||[];
-let EL={key:'',vid:'',on:false};
+let EL={key:'',vid:'',on:false,hudOnly:false,model:'eleven_flash_v2_5',used:0,mo:''};
 try{Object.assign(EL,JSON.parse(localStorage.getItem('jarvis-el')||'{}'))}catch(e){}
 let wakeStart,wakeAny;
 const esc=x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -201,27 +209,33 @@ const findRep=q=>{q=q.replace(/^(la )?riparazione di |^di /,'').trim();return S.
 
 let spk=0,talkTimer,awakeUntil=0;
 let curAudio=null;
+const CACHE={};
 async function cloud(sp){
-  const r=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(EL.vid)+'?output_format=mp3_44100_64',{method:'POST',headers:{'xi-api-key':EL.key,'content-type':'application/json'},body:JSON.stringify({text:sp,model_id:'eleven_multilingual_v2'})});
+  const ck=EL.vid+'|'+EL.model+'|'+sp;
+  if(CACHE[ck])return new Audio(CACHE[ck]);
+  const r=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(EL.vid)+'?output_format=mp3_44100_64',{method:'POST',headers:{'xi-api-key':EL.key,'content-type':'application/json'},body:JSON.stringify({text:sp,model_id:EL.model||'eleven_flash_v2_5'})});
   if(!r.ok){let m='errore '+r.status;try{const j=await r.json();const d=j.detail;m=typeof d==='string'?d:(d&&d.message)||m}catch(e){}throw new Error(m)}
-  return new Audio(URL.createObjectURL(await r.blob()));
+  const url=URL.createObjectURL(await r.blob());CACHE[ck]=url;
+  const mo=new Date().toISOString().slice(0,7);if(EL.mo!==mo){EL.mo=mo;EL.used=0}
+  EL.used+=sp.length;try{localStorage.setItem('jarvis-el',JSON.stringify(EL))}catch(e){}
+  return new Audio(url);
 }
 function speak(t){
   $('reply').textContent=t;
   const my=++spk,done=()=>{if(my!==spk)return;clearTimeout(talkTimer);setTimeout(()=>{if(my!==spk)return;talking=false;awakeUntil=Date.now()+8000},600)};
   try{speechSynthesis.cancel()}catch(e){}
   try{if(curAudio){curAudio.pause();curAudio=null}}catch(e){}
-  const sp=t.slice(0,350);
+  const prem=EL.on&&EL.key&&EL.vid&&(!EL.hudOnly||hudOn),sp=t.slice(0,prem?250:350);
   const local=()=>{
     try{
       const u=new SpeechSynthesisUtterance(sp);
-      talking=true;clearTimeout(talkTimer);talkTimer=setTimeout(done,1500+sp.length*90);
+      talking=true;clearTimeout(talkTimer);talkTimer=setTimeout(done,Math.min(1500+sp.length*70,15000));
       u.onend=u.onerror=done;u.lang='it-IT';
       const vv=speechSynthesis.getVoices().find(v=>v.voiceURI===CFG.voice);if(vv){u.voice=vv;u.lang=vv.lang}
       u.rate=CFG.rate;u.pitch=CFG.pitch;speechSynthesis.speak(u);
     }catch(e){talking=false}
   };
-  if(EL.on&&EL.key&&EL.vid){
+  if(prem){
     talking=true;clearTimeout(talkTimer);talkTimer=setTimeout(done,25000);
     cloud(sp).then(a=>{
       if(my!==spk)return;
@@ -243,7 +257,7 @@ function render(){
   });
   const r=$('rep');r.textContent='';
   {const o=S.rep.filter(i=>i.s!=='consegnata'),n=k=>o.filter(i=>(i.pr||'giallo')===k).length;
-  $('stats').innerHTML='<span class="chip rosso">'+n('rosso')+' urgenti</span><span class="chip giallo">'+n('giallo')+' normali</span><span class="chip verde">'+n('verde')+' in attesa</span>'}
+  $('stats').innerHTML='<span class="chip rosso">'+n('rosso')+' urgenti</span><span class="chip giallo">'+n('giallo')+' normali</span><span class="chip verde">'+n('verde')+' in attesa</span>'+(RPon()?'<span class="chip verde">RepairPro collegato</span>':'<span class="chip giallo">RepairPro non collegato</span>')}
   if(!S.rep.length){const d=document.createElement('div');d.className='empty';d.textContent='Nessuna riparazione. Di’ “nuova riparazione…”.';r.appendChild(d)}
   sorted().forEach(i=>{
     const li=document.createElement('li'),t=document.createElement('span'),s=document.createElement('small'),st=document.createElement('button'),x=document.createElement('button');
@@ -256,9 +270,10 @@ function render(){
     a('Modifica',()=>edit(i));
     a('Soluzioni',()=>solve(i));
     a('Scheda cliente',()=>scheda(i));
+    if(!RPon())a('→ RepairPro',()=>toRP(i));
     st.className='st '+(i.s==='in corso'?'':i.s);st.textContent=i.s;st.onclick=()=>{i.s=NEXT[i.s];i.upd=Date.now();save();render()};
     x.className='x';x.textContent='×';x.setAttribute('aria-label','Rimuovi riparazione di '+i.c);
-    x.onclick=()=>{S.rep=S.rep.filter(k=>k.id!==i.id);save();render()};
+    x.onclick=()=>{if(RPon()){speak('Per eliminare una riparazione usa RepairPro.');return}S.rep=S.rep.filter(k=>k.id!==i.id);save();render()};
     li.append(t,st,x);r.appendChild(li);
   });
 }
@@ -329,6 +344,10 @@ async function run(raw){
   if(m=t.match(/^(?:modifica|apri)\s+(?:la scheda di |scheda di |la riparazione di )?(.+)$/)){
     const i=findRep(m[1]);if(i){edit(i);return speak('Apro la scheda di '+i.c+'.')}
   }
+  if(/repair\s?pro/.test(t)){
+    const i=S.rep.find(r=>t.includes(r.c.toLowerCase()));
+    if(i)return toRP(i);
+  }
   if(m=t.match(/scheda cliente (?:per |di )?(.+)$/)){
     const i=findRep(m[1]);if(i)return scheda(i);
   }
@@ -336,7 +355,7 @@ async function run(raw){
     const q=m[1],n=S.buy.length;
     S.buy=S.buy.filter(i=>!i.t.toLowerCase().includes(q));
     if(S.buy.length<n){save();render();return speak('Tolto '+q+' dalla lista.')}
-    const r=S.rep.length;S.rep=S.rep.filter(i=>!i.c.toLowerCase().includes(q.replace(/^la riparazione di /,'')));
+    if(RPon())return speak('Per eliminare una riparazione usa RepairPro.');const r=S.rep.length;S.rep=S.rep.filter(i=>!i.c.toLowerCase().includes(q.replace(/^la riparazione di /,'')));
     if(S.rep.length<r){save();render();return speak('Riparazione rimossa.')}
     return speak('Non ho trovato '+q+'.');
   }
@@ -344,7 +363,7 @@ async function run(raw){
     S.buy.unshift({id:uid(),t:m[1]});save();render();return speak('Aggiunto: '+m[1]+'.');
   }
   const hit=S.teach.find(x=>t.includes(x.q));
-  if(hit)return speak(hit.a);
+  if(hit){lastTaught=Date.now();return speak(hit.a)}
   return chat(raw);
 }
 
@@ -352,20 +371,47 @@ function ctx(){
   const o=sorted().filter(i=>i.s!=='consegnata'),d=new Date().setHours(0,0,0,0),g=S.rep.filter(i=>i.upd>=d);
   return 'Riparazioni aperte (per priorità): '+(o.map(i=>i.c+' - '+(i.d||'?')+' - '+(i.p||'?')+' - '+PRN[i.pr||'giallo']+' - '+i.s).join('; ')||'nessuna')+'. Oggi: '+g.filter(i=>i.s==='pronta').length+' pronte, '+g.filter(i=>i.s==='consegnata').length+' consegnate, '+g.length+' movimenti. Da ordinare: '+(S.buy.map(i=>i.t).join(', ')||'niente')+'.';
 }
-async function ai(system,msgs){
+let noTc=false;
+async function gem(system,msgs,max){
+  if(!CFG.gkey)throw new Error('Manca la chiave Gemini: incollala in Impostazioni → Intelligenza artificiale.');
+  const mp=[...new Set(S.rep.map(i=>i.c).filter(c=>c&&c.length>2))].map((c,n)=>[c,'Cliente '+(n+1)]);
+  const fwd=x=>mp.reduce((a,[c,k])=>a.replace(new RegExp(esc(c),'gi'),k),x);
+  const back=x=>mp.reduce((a,[c,k])=>a.replace(new RegExp(esc(k)+'\\b','g'),c),x);
+  const m=CFG.gmodel,tc=/2\.5/.test(m)?{thinkingBudget:0}:/(^|-)3/.test(m)?{thinkingLevel:'low'}:null;
+  const mk=u=>JSON.stringify({system_instruction:{parts:[{text:fwd(system)}]},contents:msgs.map(x=>({role:x.role==='assistant'?'model':'user',parts:[{text:fwd(x.content)}]})),generationConfig:Object.assign({maxOutputTokens:max||700},u&&tc?{thinkingConfig:tc}:{})});
+  const go=async body=>{
+    const ac=new AbortController(),to=setTimeout(()=>ac.abort(),25000);
+    try{return await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(m)+':generateContent',{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':CFG.gkey},body,signal:ac.signal})}
+    catch(e){if(e.name==='AbortError')throw new Error('Gemini non risponde: riprova tra poco.');throw e}
+    finally{clearTimeout(to)}
+  };
+  let u=!!tc&&!noTc,r=await go(mk(u));
+  if(r.status===400&&u){u=false;r=await go(mk(false));if(r.ok)noTc=true}
+  if(r.status===429||r.status===503){await new Promise(z=>setTimeout(z,2500));r=await go(mk(u))}
+  const j=await r.json();
+  if(!r.ok){
+    if(r.status===429||r.status===503)throw new Error('Gemini è sovraccarico oppure hai raggiunto il limite gratuito: riprova tra qualche istante.');
+    throw new Error((j.error&&j.error.message)||'Errore '+r.status);
+  }
+  const out=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('\n');
+  if(!out)throw new Error('Risposta vuota da Gemini.');
+  return back(out);
+}
+async function ai(system,msgs,max){
+  if(CFG.provider==='gemini')return gem(system,msgs,max);
   if(!KEY)throw new Error('Manca la chiave: aprila in “Intelligenza artificiale” e incollala.');
-  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:CFG.model,max_tokens:700,system,messages:msgs})});
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:CFG.model,max_tokens:max||700,system,messages:msgs})});
   const j=await r.json();
   if(!r.ok)throw new Error((j.error&&j.error.message)||'Errore '+r.status);
   return j.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
 }
-const errMsg=e=>/fetch|Failed|Load failed/i.test(e.message)?'Non riesco a contattare Claude. Questa funzione va usata dalla pagina su GitHub, con la chiave salvata.':e.message;
+const errMsg=e=>/x-api-key|api key not valid|API_KEY_INVALID/i.test(e.message)?'La chiave non è valida per il motore scelto. Controlla in Impostazioni che il motore (Claude o Gemini) corrisponda alla chiave inserita.':/fetch|Failed|Load failed/i.test(e.message)?'Non riesco a contattare il servizio AI. Questa funzione va usata dalla pagina su GitHub, con la chiave salvata.':e.message;
 async function chat(raw){
   $('reply').textContent='…';
   hist.push({role:'user',content:raw});hist=hist.slice(-10);
   while(hist.length&&hist[0].role!=='user')hist.shift();
   try{
-    const a=await ai('Sei '+CFG.name+', assistente vocale di '+CFG.call+', titolare del negozio di riparazioni Techandbet (smartphone, console, PC, elettronica) in Italia. Rispondi in italiano, breve e naturale (max 3 frasi) perché la risposta viene letta ad alta voce. Puoi fare due chiacchiere e commentare la giornata. Stile: '+STILI[CFG.style]+' '+CFG.extra+' Dati attuali: '+ctx(),hist);
+    const a=await ai('Sei '+CFG.name+', assistente vocale di '+CFG.call+', titolare del negozio di riparazioni Techandbet (smartphone, console, PC, elettronica) in Italia. Rispondi in italiano, breve e naturale (max 3 frasi) perché la risposta viene letta ad alta voce. Puoi fare due chiacchiere e commentare la giornata. Stile: '+STILI[CFG.style]+' '+CFG.extra+' Dati attuali: '+ctx(),hist,260);
     hist.push({role:'assistant',content:a});speak(a);
   }catch(e){hist.pop();speak(errMsg(e))}
 }
@@ -375,6 +421,72 @@ async function solve(i){
     i.sol=await ai('Sei un tecnico esperto di riparazioni elettroniche. Rispondi in italiano, conciso: elenco numerato di 3-5 cause probabili in ordine di probabilità, ciascuna con il test rapido da fare e l’intervento o ricambio. Non inventare codici ricambio.',[{role:'user',content:'Dispositivo: '+(i.d||'non indicato')+'. Problema: '+(i.p||'non indicato')+'.'}]);
     save();render();speak('Ho trovato alcune possibili cause per '+i.c+'. Le vedi sulla scheda.');
   }catch(e){speak(errMsg(e))}
+}
+/* Collegamento diretto a RepairPro (stesso sito github.io) */
+const RPon=()=>localStorage.getItem('rp_rl')!==null||localStorage.getItem('rp_ml')!==null;
+const pd=x=>{const m=(x||'').match(/(\d+)\/(\d+)\/(\d+)/);return m?new Date(+m[3],+m[2]-1,+m[1]).getTime():0};
+const sJ=x=>x==='Pronto'?'pronta':x==='Consegnato'?'consegnata':'in corso';
+const sRP={'in corso':'In lavorazione',pronta:'Pronto',consegnata:'Consegnato'};
+const catOf=dv=>/ps[2-5]|playstation|xbox|switch|console|psp/i.test(dv)?'Console':/notebook|laptop|macbook/i.test(dv)?'Notebook':/\bpc\b|computer/i.test(dv)?'PC':/ipad|tablet/i.test(dv)?'Tablet':'Smartphone';
+function prOf(r){
+  if(r.priorita&&PR[r.priorita]!==undefined)return r.priorita;
+  if(!r.consegna)return 'giallo';
+  const o=new Date();o.setHours(0,0,0,0);const d=new Date(r.consegna);d.setHours(0,0,0,0);
+  const diff=Math.ceil((d-o)/86400000);
+  return isNaN(diff)?'giallo':diff<=0?'rosso':diff<=3?'giallo':'verde';
+}
+function rpLoad(){
+  let RL;try{RL=JSON.parse(localStorage.getItem('rp_rl')||'[]')}catch(e){return}
+  const today=new Date().toLocaleDateString('it-IT');
+  S.rep=RL.filter(r=>r.stato!=='Consegnato'||r.dataConsegnato===today).map(r=>{
+    const s=sJ(r.stato),pr=prOf(r),o={c:r.nome||'(senza nome)',d:r.device||'',p:r.problema||'',tel:r.tel||'',note:r.note||'',sol:r.diagnosiJarvis||''};
+    return{id:'rp'+r.id,rid:r.id,c:o.c,d:o.d,p:o.p,tel:o.tel,note:o.note,s,s0:s,pr,pr0:pr,sol:o.sol,o,upd:pd(r.dataConsegnato)||pd(r.data)};
+  });
+}
+function rpSave(){
+  if(!RPon())return;
+  let RL;try{RL=JSON.parse(localStorage.getItem('rp_rl')||'[]')}catch(e){return}
+  let rid=parseInt(localStorage.getItem('rp_rid')||'0')||0;RL.forEach(x=>{rid=Math.max(rid,+x.id||0)});
+  const today=new Date().toLocaleDateString('it-IT');
+  S.rep.forEach(i=>{
+    let rec=i.rid&&RL.find(x=>x.id===i.rid);
+    if(!rec){
+      rid++;rec={id:rid,categoria:catOf(i.d||''),nome:i.c,tel:i.tel||'',email:'',device:i.d||'Non indicato',imei:'',tipo:'Fuori garanzia',costo:'',pin:'',schema:'',accessori:'Solo dispositivo',estetica:'-',consegna:'',stato:i.s==='in corso'?'In attesa':sRP[i.s],datric:'',esito:'',problema:i.p||'',note:i.note||'',ricambi:[],data:today};
+      RL.unshift(rec);i.rid=rid;i.id='rp'+rid;i.s0=i.s;i.pr0=null;i.o={};
+    }
+    const o=i.o||{};
+    if(i.c!==o.c)rec.nome=i.c;
+    if(i.d!==o.d&&i.d)rec.device=i.d;
+    if(i.p!==o.p)rec.problema=i.p||'';
+    if(i.tel!==o.tel)rec.tel=i.tel||'';
+    if(i.note!==o.note)rec.note=i.note||'';
+    if(i.sol!==o.sol)rec.diagnosiJarvis=i.sol||'';
+    if(i.s!==i.s0){
+      const was=rec.stato;rec.stato=sRP[i.s]||rec.stato;
+      if(rec.stato==='Consegnato'&&was!=='Consegnato')rec.dataConsegnato=today;
+      if(rec.stato!=='Consegnato'&&was==='Consegnato')rec.dataConsegnato=null;
+    }
+    if(i.pr!==i.pr0)rec.priorita=i.pr;
+    i.s0=i.s;i.pr0=i.pr;i.o={c:i.c,d:i.d,p:i.p,tel:i.tel||'',note:i.note||'',sol:i.sol||''};
+  });
+  localStorage.setItem('rp_rl',JSON.stringify(RL));localStorage.setItem('rp_rid',String(rid));
+}
+window.addEventListener('storage',e=>{if((e.key==='rp_rl')&&RPon()){rpLoad();render()}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&RPon()){rpLoad();render()}});
+
+function toRP(i){
+  const raw=localStorage.getItem('rp_rl');
+  if(raw===null&&localStorage.getItem('rp_ml')===null)return speak('Non trovo i dati di RepairPro su questo sito. Apri RepairPro almeno una volta dallo stesso indirizzo github.io di Jarvis.');
+  if(i.rp||i.rid)return speak('La scheda di '+i.c+' è già stata inviata a RepairPro.');
+  let RL;try{RL=JSON.parse(raw||'[]')}catch(e){return speak('I dati di RepairPro non sono leggibili.')}
+  const id=Math.max(parseInt(localStorage.getItem('rp_rid')||'0')||0,...RL.map(x=>+x.id||0))+1,dv=i.d||'';
+  const cat=/ps[2-5]|playstation|xbox|switch|console|psp/i.test(dv)?'Console':/notebook|laptop|macbook/i.test(dv)?'Notebook':/\bpc\b|computer/i.test(dv)?'PC':/ipad|tablet/i.test(dv)?'Tablet':'Smartphone';
+  const stato={'in corso':'In lavorazione',pronta:'Pronto',consegnata:'Consegnato'}[i.s]||'In attesa';
+  const note=['Priorità: '+PRN[i.pr||'giallo'],i.note,i.sol&&'Diagnosi Jarvis:\n'+i.sol].filter(Boolean).join('\n');
+  RL.unshift({id,categoria:cat,nome:i.c,tel:i.tel||'',email:'',device:dv||'Non indicato',imei:'',tipo:'Fuori garanzia',costo:'',pin:'',schema:'',accessori:'Solo dispositivo',estetica:'-',consegna:'',stato,datric:'',esito:'',problema:i.p||'',note,ricambi:[],data:new Date().toLocaleDateString('it-IT'),priorita:i.pr||'giallo'});
+  localStorage.setItem('rp_rl',JSON.stringify(RL));localStorage.setItem('rp_rid',String(id));
+  i.rp=id;save();render();
+  speak('Scheda di '+i.c+' inviata a RepairPro, numero '+id+'.');
 }
 function scheda(i){
   const o={tipo:'scheda_cliente',cliente:i.c,telefono:i.tel||'',note:i.note||'',dispositivo:i.d||'',problema:i.p||'',priorita:i.pr||'giallo',stato:i.s,diagnosi:i.sol||'',aggiornata:new Date(i.upd||Date.now()).toISOString()};
@@ -412,7 +524,10 @@ function start(){
   try{r.start();on=true;$('mic').classList.add('live');$('heard').textContent=always?'In ascolto: di’ “'+CFG.name+'…” e il comando':'Ti ascolto…'}catch(e){rec=null;$('heard').textContent='Non riesco ad avviare il microfono.'}
 }
 $('always').onchange=()=>{stopRec();if($('always').checked)start()};
-$('mic').onclick=()=>{if(on)stopRec();else start()};
+$('mic').onclick=()=>{
+  if(talking){talking=false;spk++;clearTimeout(talkTimer);try{speechSynthesis.cancel()}catch(e){}try{if(curAudio){curAudio.pause();curAudio=null}}catch(e){}return}
+  if(on)stopRec();else start();
+};
 let cur=null;
 function edit(i){cur=i;$('e-c').value=i.c;$('e-tel').value=i.tel||'';$('e-d').value=i.d||'';$('e-p').value=i.p||'';$('e-n').value=i.note||'';$('e-pr').value=i.pr||'giallo';$('e-s').value=i.s;$('dlg').showModal()}
 $('df').onsubmit=e=>{e.preventDefault();if(!cur)return;Object.assign(cur,{c:$('e-c').value.trim()||cur.c,tel:$('e-tel').value.trim(),d:$('e-d').value.trim(),p:$('e-p').value.trim(),note:$('e-n').value.trim(),pr:$('e-pr').value,s:$('e-s').value,upd:Date.now()});save();render();$('dlg').close()};
@@ -437,7 +552,7 @@ function renderTeach(){
 $('gear').onclick=()=>{
   $('s-name').value=CFG.name;$('s-alias').value=CFG.alias;$('s-call').value=CFG.call;$('s-style').value=CFG.style;$('s-extra').value=CFG.extra;
   $('s-rate').value=CFG.rate;$('s-pitch').value=CFG.pitch;$('o-rate').textContent=CFG.rate;$('o-pitch').textContent=CFG.pitch;
-  $('s-model').value=CFG.model;$('s-theme').value=CFG.theme;$('key').value='';$('el-on').checked=EL.on;$('el-vid').value=EL.vid;$('el-key').value='';
+  $('s-model').value=CFG.model;$('s-theme').value=CFG.theme;$('s-prov').value=CFG.provider;$('gmodel').value=CFG.gmodel;$('gkey').value='';$('key').value='';$('el-on').checked=EL.on;$('el-vid').value=EL.vid;$('el-key').value='';$('el-model').value=EL.model;$('el-hud').checked=EL.hudOnly;const mo=new Date().toISOString().slice(0,7);$('el-use').textContent='Caratteri usati questo mese: '+(EL.mo===mo?EL.used:0)+'. Il piano gratuito ha 10.000 crediti al mese.';
   $('kst').textContent=KEY?'Chiave già salvata su questo dispositivo.':'Nessuna chiave salvata. Serve per conversazione e soluzioni.';
   fillVoices();renderTeach();$('sdlg').showModal();
 };
@@ -503,6 +618,11 @@ function brief(){
   const h=new Date().getHours(),g=h<12?'Buongiorno':h<18?'Buon pomeriggio':'Buonasera',o=S.rep.filter(i=>i.s!=='consegnata'),u=o.filter(i=>i.pr==='rosso').length;
   return g+' '+(CFG.style==='ironico'?'signore':CFG.call)+'. '+(o.length?o.length+(o.length===1?' riparazione aperta':' riparazioni aperte')+(u?', di cui '+u+(u===1?' urgente':' urgenti'):'')+'.':'Nessuna riparazione aperta.')+(S.buy.length?' '+S.buy.length+' articoli da ordinare.':'');
 }
+let lastTaught=0;
+function hudKnow(){
+  const n=S.teach.length;
+  $('h-know').textContent=Date.now()-lastTaught<5000?'Risposta insegnata':'Conoscenze: '+n+(n?' · '+S.teach.slice(-3).map(x=>'“'+x.q+'”').join(' '):'');
+}
 function hudStats(){
   const o=S.rep.filter(i=>i.s!=='consegnata'),sy=[!!SR,!!KEY,true,on].filter(Boolean).length;
   const c=[[S.rep.length+S.buy.length+S.teach.length,'neuroni'],[sy,'sistemi attivi'],[3,'agenti pronti'],[o.filter(i=>i.pr==='rosso').length,'urgenti']];
@@ -510,8 +630,8 @@ function hudStats(){
 }
 function openHud(){
   if(hudOn)return;hudOn=true;hud.hidden=false;hudSize();if(!pts.length)hudInit();
-  $('h-hello').textContent=CFG.name.toUpperCase()+' · ONLINE';hudStats();
-  hudTimer=setInterval(()=>{hudStats();$('h-heard').textContent=$('heard').textContent;$('h-reply').textContent=$('reply').textContent.slice(0,260)},300);
+  $('h-hello').textContent=CFG.name.toUpperCase()+' · ONLINE';hudStats();hudKnow();
+  hudTimer=setInterval(()=>{hudStats();hudKnow();$('h-heard').textContent=$('heard').textContent;$('h-reply').textContent=$('reply').textContent.slice(0,260)},300);
   raf=requestAnimationFrame(hudFrame);speak(brief());
 }
 function closeHud(){hudOn=false;hud.hidden=true;clearInterval(hudTimer);cancelAnimationFrame(raf)}
@@ -519,13 +639,14 @@ $('hudb').onclick=openHud;$('h-x').onclick=closeHud;cv.onclick=()=>$('mic').clic
 window.addEventListener('resize',()=>{if(hudOn)hudSize()});
 $('sf').onsubmit=e=>{
   e.preventDefault();
-  Object.assign(CFG,{name:$('s-name').value.trim()||'Jarvis',alias:$('s-alias').value.trim(),call:$('s-call').value.trim()||'Alessandro',style:$('s-style').value,extra:$('s-extra').value.trim(),voice:$('s-voice').value,rate:+$('s-rate').value,pitch:+$('s-pitch').value,model:$('s-model').value,theme:$('s-theme').value});
+  Object.assign(CFG,{name:$('s-name').value.trim()||'Jarvis',alias:$('s-alias').value.trim(),call:$('s-call').value.trim()||'Alessandro',style:$('s-style').value,extra:$('s-extra').value.trim(),voice:$('s-voice').value,rate:+$('s-rate').value,pitch:+$('s-pitch').value,model:$('s-model').value,theme:$('s-theme').value,provider:$('s-prov').value,gmodel:$('gmodel').value.trim()||'gemini-3.1-flash-lite-preview'});const gk=$('gkey').value.trim();if(gk)CFG.gkey=gk;if(gk&&!KEY&&!$('key').value.trim())CFG.provider='gemini';
   try{localStorage.setItem('jarvis-cfg',JSON.stringify(CFG))}catch(x){}
-  const k=$('key').value.trim();if(k){KEY=k;try{localStorage.setItem('jarvis-key',KEY)}catch(x){}}
-  const ek=$('el-key').value.trim();if(ek)EL.key=ek;EL.vid=$('el-vid').value.trim();EL.on=$('el-on').checked;try{localStorage.setItem('jarvis-el',JSON.stringify(EL))}catch(x){}
+  const k=$('key').value.trim();if(k.startsWith('AIza')){CFG.gkey=k;CFG.provider='gemini';try{localStorage.setItem('jarvis-cfg',JSON.stringify(CFG))}catch(x){}}else if(k){KEY=k;try{localStorage.setItem('jarvis-key',KEY)}catch(x){}}
+  const ek=$('el-key').value.trim();if(ek)EL.key=ek;EL.vid=$('el-vid').value.trim();EL.on=$('el-on').checked;EL.hudOnly=$('el-hud').checked;EL.model=$('el-model').value;try{localStorage.setItem('jarvis-el',JSON.stringify(EL))}catch(x){}
   applyCfg();toneSel();$('sdlg').close();speak('Impostazioni salvate.');
 };
 applyCfg();
+if(RPon())rpLoad();
 $('f').onsubmit=e=>{e.preventDefault();const v=$('txt').value.trim();if(v){run(v);$('txt').value=''}};
 render();
 </script>
