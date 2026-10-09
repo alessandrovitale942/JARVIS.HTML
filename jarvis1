@@ -61,7 +61,7 @@ dialog::backdrop{background:rgba(0,0,0,.65)}
 dialog h3{margin:0 0 6px;font:700 .8rem var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--acc)}
 dialog label{display:block;margin-top:10px;font:.68rem var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
 dialog label>*{margin-top:4px;text-transform:none;letter-spacing:0;font-family:inherit}
-dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;position:sticky;bottom:-18px;background:var(--panel);padding:10px 0}
 dialog .row button{padding:9px 16px}
 dialog{max-height:88vh;overflow:auto}
 dialog h4{margin:18px 0 0;padding-top:10px;border-top:1px solid var(--line);font:700 .7rem var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--acc)}
@@ -87,7 +87,7 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 </head>
 <body>
 <main>
-<header class="top"><div><div class="brand"><b id="bn">JARVIS</b><span>/ TECHANDBET</span></div><div class="sub">Sistema di gestione vocale · v16</div></div><div class="sys"><i class="dot"></i><span id="clk"></span><button id="hudb" class="act" style="margin:0">HUD</button><button id="gear" class="act" style="margin:0">Impostazioni</button></div></header>
+<header class="top"><div><div class="brand"><b id="bn">JARVIS</b><span>/ TECHANDBET</span></div><div class="sub">Sistema di gestione vocale · v18</div></div><div class="sys"><i class="dot"></i><span id="clk"></span><button id="hudb" class="act" style="margin:0">HUD</button><button id="gear" class="act" style="margin:0">Impostazioni</button></div></header>
 
 <section class="voice">
   <button id="mic" aria-label="Parla"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
@@ -159,6 +159,7 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 <small>Con il piano gratuito Google può usare i testi inviati per migliorare i suoi modelli. Per questo, con Gemini, i nomi dei clienti diventano “Cliente 1, 2…” prima dell’invio e vengono rimessi nella risposta.</small>
 <label>Modello<select id="s-model"><option value="claude-sonnet-5-5">Sonnet 5.5 · più intelligente</option><option value="claude-haiku-4-5-20251001">Haiku 4.5 · più veloce ed economico</option></select></label>
 <h4>Aspetto</h4>
+<label><input type="checkbox" id="s-rp" style="width:auto"> Collega Jarvis a RepairPro (usa le sue riparazioni)</label>
 <label>Tema<select id="s-theme"><option value="auto">Automatico</option><option value="dark">Scuro</option><option value="light">Chiaro</option></select></label>
 <h4>Risposte insegnate</h4>
 <small>Se la tua frase contiene queste parole, rispondo così. I comandi hanno la precedenza.</small>
@@ -166,7 +167,8 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 <label>Quando dico<input type="text" id="t-q"></label>
 <label>Rispondi<input type="text" id="t-a"></label>
 <button type="button" class="act" id="t-add" style="margin:8px 0 0">Aggiungi</button>
-<div class="row"><button type="button" class="act" id="s-x" style="margin:0">Chiudi</button><button class="go">Salva</button></div>
+<small id="sv" style="display:block;margin-top:10px;color:var(--acc);min-height:1.2em"></small>
+<div class="row"><button type="button" class="act" id="s-x" style="margin:0">Chiudi</button><button type="button" class="go" id="s-save">Salva e chiudi</button></div>
 </form></dialog>
 </main>
 <div id="hud" hidden>
@@ -180,7 +182,7 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 const $=id=>document.getElementById(id);
 let S={buy:[],rep:[]};
 try{const r=localStorage.getItem('jarvis-negozio');if(r)S=JSON.parse(r)}catch(e){}
-const save=()=>{try{localStorage.setItem('jarvis-negozio',JSON.stringify(S))}catch(e){}try{rpSave()}catch(e){}};
+const save=()=>{try{localStorage.setItem('jarvis-negozio',JSON.stringify(RPon()?{...S,rep:[]}:S))}catch(e){}try{rpSave()}catch(e){}};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
 const NEXT={'in corso':'pronta',pronta:'consegnata',consegnata:'in corso'};
@@ -425,7 +427,7 @@ async function solve(i){
   }catch(e){speak(errMsg(e))}
 }
 /* Collegamento diretto a RepairPro (stesso sito github.io) */
-const RPon=()=>localStorage.getItem('rp_rl')!==null||localStorage.getItem('rp_ml')!==null;
+const RPon=()=>CFG.rp!==false&&(localStorage.getItem('rp_rl')!==null||localStorage.getItem('rp_ml')!==null);
 const pd=x=>{const m=(x||'').match(/(\d+)\/(\d+)\/(\d+)/);return m?new Date(+m[3],+m[2]-1,+m[1]).getTime():0};
 const sJ=x=>x==='Pronto'?'pronta':x==='Consegnato'?'consegnata':'in corso';
 const sRP={'in corso':'In lavorazione',pronta:'Pronto',consegnata:'Consegnato'};
@@ -499,21 +501,29 @@ function scheda(i){
 /* Riconoscimento vocale */
 function dbg(t){const d=$('dbg');if(d)d.textContent=new Date().toLocaleTimeString('it-IT')+' · '+t}
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-let rec=null,on=false;
+let rec=null,on=false,lastCmd='',lastCmdT=0;
 function stopRec(){on=false;const r=rec;rec=null;try{r&&r.stop()}catch(e){}$('mic').classList.remove('live')}
 function start(){
   if(!SR){speak('Questo browser non supporta il riconoscimento vocale. Usa Chrome o Safari aggiornato, oppure scrivi il comando.');return}
   const always=$('always').checked,r=new SR();rec=r;
-  r.lang='it-IT';r.interimResults=true;r.continuous=true;
-  r.onstart=()=>dbg('Microfono attivo');r.onaudiostart=()=>dbg('Audio in ingresso: ok');r.onspeechstart=()=>dbg('Sento una voce…');
+  r.lang='it-IT';r.interimResults=true;r.continuous=always;r._done=-1;
+  r.onstart=()=>{r._done=-1;dbg('Microfono attivo')};r.onaudiostart=()=>dbg('Audio in ingresso: ok');r.onspeechstart=()=>dbg('Sento una voce…');
   r.onresult=e=>{
-    let txt='',fin=false;
-    for(let k=e.resultIndex;k<e.results.length;k++){txt+=e.results[k][0].transcript;if(e.results[k].isFinal)fin=true}
-    txt=txt.trim();if(!txt)return;
-    if(!fin){$('heard').textContent='Sento: '+txt;return}
-    dbg('Frase: '+txt);if(talking){dbg('Ignorata: Jarvis sta ancora parlando');return}
-    if(always&&!wakeAny.test(txt)&&Date.now()>=awakeUntil){$('heard').textContent='Sentito, ma senza “'+CFG.name+'”: '+txt;return}
-    awakeUntil=Date.now()+12000;run(txt);
+    let interim='';
+    for(let k=e.resultIndex;k<e.results.length;k++){
+      const res=e.results[k],txt=res[0].transcript.trim();
+      if(!txt)continue;
+      if(!res.isFinal){interim+=txt+' ';continue}
+      if(k<=r._done)continue;
+      r._done=k;
+      dbg('Frase: '+txt);
+      if(talking){dbg('Ignorata: Jarvis sta ancora parlando');continue}
+      if(always&&!wakeAny.test(txt)&&Date.now()>=awakeUntil){$('heard').textContent='Sentito, ma senza “'+CFG.name+'”: '+txt;continue}
+      if(txt===lastCmd&&Date.now()-lastCmdT<3000)continue;
+      lastCmd=txt;lastCmdT=Date.now();
+      awakeUntil=Date.now()+12000;run(txt);
+    }
+    if(interim)$('heard').textContent='Sento: '+interim.trim();
   };
   r.onerror=e=>{
     const m={'not-allowed':'Microfono bloccato: consenti l’accesso nelle impostazioni del browser.','service-not-allowed':'Riconoscimento vocale disattivato: su iPhone attiva Impostazioni → Generali → Tastiera → Abilita dettatura.','audio-capture':'Non trovo nessun microfono.','network':'Il riconoscimento vocale richiede internet.'}[e.error];
@@ -522,10 +532,10 @@ function start(){
   };
   r.onend=()=>{
     if(r!==rec)return;
-    if(on){dbg('Riavvio ascolto');setTimeout(()=>{if(r!==rec||!on)return;try{r.start()}catch(x){stopRec();$('heard').textContent='Ascolto interrotto: tocca il microfono per riattivarlo.'}},250)}
+    if(on&&always){dbg('Riavvio ascolto');setTimeout(()=>{if(r!==rec||!on)return;try{r.start()}catch(x){stopRec();$('heard').textContent='Ascolto interrotto: tocca il microfono per riattivarlo.'}},250)}
     else stopRec();
   };
-  try{r.start();on=true;$('mic').classList.add('live');$('heard').textContent=always?'In ascolto: di’ “'+CFG.name+'…” e il comando':'Ti ascolto… tocca di nuovo il microfono per fermarmi'}catch(e){rec=null;$('heard').textContent='Non riesco ad avviare il microfono.'}
+  try{r.start();on=true;$('mic').classList.add('live');$('heard').textContent=always?'In ascolto: di’ “'+CFG.name+'…” e il comando':'Ti ascolto… parla ora'}catch(e){rec=null;$('heard').textContent='Non riesco ad avviare il microfono.'}
 }
 $('always').onchange=()=>{stopRec();if($('always').checked)start()};
 $('mic').onclick=()=>{
@@ -556,7 +566,7 @@ function renderTeach(){
 $('gear').onclick=()=>{
   $('s-name').value=CFG.name;$('s-alias').value=CFG.alias;$('s-call').value=CFG.call;$('s-style').value=CFG.style;$('s-extra').value=CFG.extra;
   $('s-rate').value=CFG.rate;$('s-pitch').value=CFG.pitch;$('o-rate').textContent=CFG.rate;$('o-pitch').textContent=CFG.pitch;
-  $('s-model').value=CFG.model;$('s-theme').value=CFG.theme;$('s-prov').value=CFG.provider;$('gmodel').value=CFG.gmodel;$('gkey').value='';
+  $('s-model').value=CFG.model;$('s-theme').value=CFG.theme;$('s-rp').checked=CFG.rp!==false;$('s-prov').value=CFG.provider;$('gmodel').value=CFG.gmodel;$('gkey').value='';
   $('gkey').placeholder=CFG.gkey?'✓ Salvata (…'+CFG.gkey.slice(-4)+'). Vuoto = non cambiarla':'Incolla qui la chiave';
   $('key').placeholder=KEY?'✓ Salvata (…'+KEY.slice(-4)+'). Vuoto = non cambiarla':'sk-ant-…';
   $('el-key').placeholder=EL.key?'✓ Salvata (…'+EL.key.slice(-4)+'). Vuoto = non cambiarla':'Incolla qui la chiave';$('key').value='';$('el-on').checked=EL.on;$('el-vid').value=EL.vid;$('el-key').value='';$('el-model').value=EL.model;$('el-hud').checked=EL.hudOnly;const mo=new Date().toISOString().slice(0,7);$('el-use').textContent='Caratteri usati questo mese: '+(EL.mo===mo?EL.used:0)+'. Il piano gratuito ha 10.000 crediti al mese.';
@@ -644,14 +654,26 @@ function openHud(){
 function closeHud(){hudOn=false;hud.hidden=true;clearInterval(hudTimer);cancelAnimationFrame(raf)}
 $('hudb').onclick=openHud;$('h-x').onclick=closeHud;cv.onclick=()=>$('mic').click();
 window.addEventListener('resize',()=>{if(hudOn)hudSize()});
-$('sf').onsubmit=e=>{
-  e.preventDefault();
-  Object.assign(CFG,{name:$('s-name').value.trim()||'Jarvis',alias:$('s-alias').value.trim(),call:$('s-call').value.trim()||'Alessandro',style:$('s-style').value,extra:$('s-extra').value.trim(),voice:$('s-voice').value,rate:+$('s-rate').value,pitch:+$('s-pitch').value,model:$('s-model').value,theme:$('s-theme').value,provider:$('s-prov').value,gmodel:$('gmodel').value.trim()||'gemini-3.1-flash-lite-preview'});const gk=$('gkey').value.trim();if(gk)CFG.gkey=gk;if(gk&&!KEY&&!$('key').value.trim())CFG.provider='gemini';
+function saveSettings(final){
+  try{
+  Object.assign(CFG,{name:$('s-name').value.trim()||'Jarvis',alias:$('s-alias').value.trim(),call:$('s-call').value.trim()||'Alessandro',style:$('s-style').value,extra:$('s-extra').value.trim(),voice:$('s-voice').value,rate:+$('s-rate').value,pitch:+$('s-pitch').value,model:$('s-model').value,theme:$('s-theme').value,rp:$('s-rp').checked,provider:$('s-prov').value,gmodel:$('gmodel').value.trim()||'gemini-3.1-flash-lite-preview'});const gk=$('gkey').value.trim();if(gk)CFG.gkey=gk;if(gk&&!KEY&&!$('key').value.trim())CFG.provider='gemini';
   try{localStorage.setItem('jarvis-cfg',JSON.stringify(CFG))}catch(x){}
   const k=$('key').value.trim();if(k.startsWith('AIza')){CFG.gkey=k;CFG.provider='gemini';try{localStorage.setItem('jarvis-cfg',JSON.stringify(CFG))}catch(x){}}else if(k){KEY=k;try{localStorage.setItem('jarvis-key',KEY)}catch(x){}}
   const ek=$('el-key').value.trim();if(ek)EL.key=ek;EL.vid=$('el-vid').value.trim();EL.on=$('el-on').checked;EL.hudOnly=$('el-hud').checked;EL.model=$('el-model').value;try{localStorage.setItem('jarvis-el',JSON.stringify(EL))}catch(x){}
-  applyCfg();toneSel();$('sdlg').close();speak('Impostazioni salvate.');
-};
+  applyCfg();toneSel();if(RPon())rpLoad();else S.rep=S.rep.filter(i=>!i.rid);render();
+  $('key').value='';$('gkey').value='';$('el-key').value='';updKeys();
+  $('sv').textContent='✓ Salvato alle '+new Date().toLocaleTimeString('it-IT');
+  if(final){$('sdlg').close();speak('Impostazioni salvate.')}
+  }catch(err){$('sv').textContent='Errore nel salvataggio: '+err.message}
+}
+function updKeys(){
+  $('gkey').placeholder=CFG.gkey?'✓ Salvata (…'+CFG.gkey.slice(-4)+'). Vuoto = non cambiarla':'Incolla qui la chiave';
+  $('key').placeholder=KEY?'✓ Salvata (…'+KEY.slice(-4)+'). Vuoto = non cambiarla':'sk-ant-…';
+  $('el-key').placeholder=EL.key?'✓ Salvata (…'+EL.key.slice(-4)+'). Vuoto = non cambiarla':'Incolla qui la chiave';
+}
+$('sf').onsubmit=e=>{e.preventDefault();saveSettings(true)};
+$('s-save').onclick=()=>saveSettings(true);
+$('sf').addEventListener('change',()=>saveSettings(false));
 applyCfg();
 try{localStorage.setItem('jarvis-t','1');if(localStorage.getItem('jarvis-t')!=='1')throw 0;localStorage.removeItem('jarvis-t')}catch(e){$('reply').textContent='Attenzione: questo browser non salva i dati (navigazione privata o cancellazione alla chiusura). Chiavi e riparazioni andranno perse.'}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
