@@ -87,13 +87,14 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 </head>
 <body>
 <main>
-<header class="top"><div><div class="brand"><b id="bn">JARVIS</b><span>/ TECHANDBET</span></div><div class="sub">Sistema di gestione vocale</div></div><div class="sys"><i class="dot"></i><span id="clk"></span><button id="hudb" class="act" style="margin:0">HUD</button><button id="gear" class="act" style="margin:0">Impostazioni</button></div></header>
+<header class="top"><div><div class="brand"><b id="bn">JARVIS</b><span>/ TECHANDBET</span></div><div class="sub">Sistema di gestione vocale · v15</div></div><div class="sys"><i class="dot"></i><span id="clk"></span><button id="hudb" class="act" style="margin:0">HUD</button><button id="gear" class="act" style="margin:0">Impostazioni</button></div></header>
 
 <section class="voice">
   <button id="mic" aria-label="Parla"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
   <div style="flex:1;min-width:0">
     <div id="heard">Tocca il microfono e parla</div>
     <div id="reply"></div>
+    <div id="dbg" style="font:.68rem var(--mono);color:var(--mute);margin-top:6px;min-height:1em"></div>
     <label class="sw"><input type="checkbox" id="always"> Sempre in ascolto: rispondo se dici “<span id="wn">Jarvis</span>…”</label>
     <label class="sw">Tono di voce <select id="tone" style="width:auto;padding:6px 8px" aria-label="Tono di voce"></select></label>
   </div>
@@ -496,19 +497,21 @@ function scheda(i){
 }
 
 /* Riconoscimento vocale */
+function dbg(t){const d=$('dbg');if(d)d.textContent=new Date().toLocaleTimeString('it-IT')+' · '+t}
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 let rec=null,on=false;
 function stopRec(){on=false;const r=rec;rec=null;try{r&&r.stop()}catch(e){}$('mic').classList.remove('live')}
 function start(){
   if(!SR){speak('Questo browser non supporta il riconoscimento vocale. Usa Chrome o Safari aggiornato, oppure scrivi il comando.');return}
   const always=$('always').checked,r=new SR();rec=r;
-  r.lang='it-IT';r.interimResults=true;r.continuous=always;
+  r.lang='it-IT';r.interimResults=true;r.continuous=true;
+  r.onstart=()=>dbg('Microfono attivo');r.onaudiostart=()=>dbg('Audio in ingresso: ok');r.onspeechstart=()=>dbg('Sento una voce…');
   r.onresult=e=>{
     let txt='',fin=false;
     for(let k=e.resultIndex;k<e.results.length;k++){txt+=e.results[k][0].transcript;if(e.results[k].isFinal)fin=true}
     txt=txt.trim();if(!txt)return;
     if(!fin){$('heard').textContent='Sento: '+txt;return}
-    if(talking)return;
+    dbg('Frase: '+txt);if(talking){dbg('Ignorata: Jarvis sta ancora parlando');return}
     if(always&&!wakeAny.test(txt)&&Date.now()>=awakeUntil){$('heard').textContent='Sentito, ma senza “'+CFG.name+'”: '+txt;return}
     awakeUntil=Date.now()+12000;run(txt);
   };
@@ -519,10 +522,10 @@ function start(){
   };
   r.onend=()=>{
     if(r!==rec)return;
-    if(on&&always){setTimeout(()=>{if(r!==rec||!on)return;try{r.start()}catch(x){stopRec();$('heard').textContent='Ascolto interrotto: tocca il microfono per riattivarlo.'}},250)}
+    if(on){dbg('Riavvio ascolto');setTimeout(()=>{if(r!==rec||!on)return;try{r.start()}catch(x){stopRec();$('heard').textContent='Ascolto interrotto: tocca il microfono per riattivarlo.'}},250)}
     else stopRec();
   };
-  try{r.start();on=true;$('mic').classList.add('live');$('heard').textContent=always?'In ascolto: di’ “'+CFG.name+'…” e il comando':'Ti ascolto…'}catch(e){rec=null;$('heard').textContent='Non riesco ad avviare il microfono.'}
+  try{r.start();on=true;$('mic').classList.add('live');$('heard').textContent=always?'In ascolto: di’ “'+CFG.name+'…” e il comando':'Ti ascolto… tocca di nuovo il microfono per fermarmi'}catch(e){rec=null;$('heard').textContent='Non riesco ad avviare il microfono.'}
 }
 $('always').onchange=()=>{stopRec();if($('always').checked)start()};
 $('mic').onclick=()=>{
