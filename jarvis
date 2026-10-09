@@ -87,13 +87,14 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 </head>
 <body>
 <main>
-<header class="top"><div><div class="brand"><b id="bn">JARVIS</b><span>/ TECHANDBET</span></div><div class="sub">Sistema di gestione vocale</div></div><div class="sys"><i class="dot"></i><span id="clk"></span><button id="hudb" class="act" style="margin:0">HUD</button><button id="gear" class="act" style="margin:0">Impostazioni</button></div></header>
+<header class="top"><div><div class="brand"><b id="bn">JARVIS</b><span>/ TECHANDBET</span></div><div class="sub">Sistema di gestione vocale · v15</div></div><div class="sys"><i class="dot"></i><span id="clk"></span><button id="hudb" class="act" style="margin:0">HUD</button><button id="gear" class="act" style="margin:0">Impostazioni</button></div></header>
 
 <section class="voice">
   <button id="mic" aria-label="Parla"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
   <div style="flex:1;min-width:0">
     <div id="heard">Tocca il microfono e parla</div>
     <div id="reply"></div>
+    <div id="dbg" style="font:.68rem var(--mono);color:var(--mute);margin-top:6px;min-height:1em"></div>
     <label class="sw"><input type="checkbox" id="always"> Sempre in ascolto: rispondo se dici “<span id="wn">Jarvis</span>…”</label>
     <label class="sw">Tono di voce <select id="tone" style="width:auto;padding:6px 8px" aria-label="Tono di voce"></select></label>
   </div>
@@ -111,7 +112,7 @@ dialog li{padding:8px 10px;font-size:.88rem;align-items:center}
 “Nuova riparazione cliente Mario dispositivo PS5 problema HDMI”<br>
 “Mario è pronto”<br>
 “Leggi le riparazioni”<br>
-“Nuova riparazione cliente Luca dispositivo iPhone 13 problema non si accende urgenza rossa” (verde = può aspettare)<br>
+“Nuova scheda cliente Luca dispositivo iPhone 13 problema non si accende urgenza rossa” (verde = può aspettare, la scheda nasce anche su RepairPro)<br>
 “Metti in ordine le riparazioni”<br>
 “Luca è urgente”<br>
 “Soluzioni per Luca”<br>
@@ -290,7 +291,7 @@ async function run(raw){
     const a=S.rep.filter(i=>i.s!=='consegnata');
     return speak(a.length?a.length+' riparazioni aperte: '+a.map(i=>i.c+', '+(i.d||'')+', '+i.s).join('; '):'Nessuna riparazione aperta.');
   }
-  if(m=t.match(/^nuova riparazione[:,]?\s*(.*)$/)){
+  if(m=t.match(/^(?:crea\s+)?nuov[ao]\s+(?:riparazione|scheda(?:\s+cliente)?)[:,]?\s*(.*)$/)){
     let rest=m[1];let c,d,p,pr='giallo';
     const pm=rest.match(/(?:urgenza|priorità|codice)\s+(rosso|rossa|giallo|gialla|verde)|\b(urgente|può aspettare|non urgente)\b/);
     if(pm){pr=prKey(pm[1]||pm[2]);rest=rest.replace(pm[0],' ').replace(/\s+/g,' ').trim()}
@@ -299,10 +300,11 @@ async function run(raw){
       c=(rest.match(/cliente\s+(.+?)(?=\s+(?:dispositivo|problema)\b|$)/)||[])[1];
       d=(rest.match(/dispositivo\s+(.+?)(?=\s+(?:cliente|problema)\b|$)/)||[])[1];
       p=(rest.match(/problema\s+(.+?)(?=\s+(?:cliente|dispositivo)\b|$)/)||[])[1];
+      if(!c)c=(rest.match(/^(.+?)(?=\s+(?:dispositivo|problema)\b|$)/)||[])[1];
     }else{const parts=rest.split(/\s*,\s*/);c=parts[0];d=parts[1];p=parts.slice(2).join(', ')}
     if(!c)return speak('Dimmi almeno il nome del cliente.');
     S.rep.unshift({id:uid(),c,d,p,s:'in corso',pr,upd:Date.now()});save();render();
-    return speak('Riparazione aggiunta per '+c+(d?', '+d:'')+', priorità '+PRN[pr]+'.');
+    return speak('Riparazione aggiunta per '+c+(d?', '+d:'')+', priorità '+PRN[pr]+(RPon()?'. Creata anche su RepairPro.':'.'));
   }
   if(m=t.match(/^(.+?)\s+(?:è|e'|e)\s+(pronto|pronta|finito|finita)$/)){
     const i=S.rep.find(r=>r.c.toLowerCase().includes(m[1].replace(/^la riparazione di /,'')));
@@ -495,19 +497,21 @@ function scheda(i){
 }
 
 /* Riconoscimento vocale */
+function dbg(t){const d=$('dbg');if(d)d.textContent=new Date().toLocaleTimeString('it-IT')+' · '+t}
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 let rec=null,on=false;
 function stopRec(){on=false;const r=rec;rec=null;try{r&&r.stop()}catch(e){}$('mic').classList.remove('live')}
 function start(){
   if(!SR){speak('Questo browser non supporta il riconoscimento vocale. Usa Chrome o Safari aggiornato, oppure scrivi il comando.');return}
   const always=$('always').checked,r=new SR();rec=r;
-  r.lang='it-IT';r.interimResults=true;r.continuous=always;
+  r.lang='it-IT';r.interimResults=true;r.continuous=true;
+  r.onstart=()=>dbg('Microfono attivo');r.onaudiostart=()=>dbg('Audio in ingresso: ok');r.onspeechstart=()=>dbg('Sento una voce…');
   r.onresult=e=>{
     let txt='',fin=false;
     for(let k=e.resultIndex;k<e.results.length;k++){txt+=e.results[k][0].transcript;if(e.results[k].isFinal)fin=true}
     txt=txt.trim();if(!txt)return;
     if(!fin){$('heard').textContent='Sento: '+txt;return}
-    if(talking)return;
+    dbg('Frase: '+txt);if(talking){dbg('Ignorata: Jarvis sta ancora parlando');return}
     if(always&&!wakeAny.test(txt)&&Date.now()>=awakeUntil){$('heard').textContent='Sentito, ma senza “'+CFG.name+'”: '+txt;return}
     awakeUntil=Date.now()+12000;run(txt);
   };
@@ -518,10 +522,10 @@ function start(){
   };
   r.onend=()=>{
     if(r!==rec)return;
-    if(on&&always){setTimeout(()=>{if(r!==rec||!on)return;try{r.start()}catch(x){stopRec();$('heard').textContent='Ascolto interrotto: tocca il microfono per riattivarlo.'}},250)}
+    if(on){dbg('Riavvio ascolto');setTimeout(()=>{if(r!==rec||!on)return;try{r.start()}catch(x){stopRec();$('heard').textContent='Ascolto interrotto: tocca il microfono per riattivarlo.'}},250)}
     else stopRec();
   };
-  try{r.start();on=true;$('mic').classList.add('live');$('heard').textContent=always?'In ascolto: di’ “'+CFG.name+'…” e il comando':'Ti ascolto…'}catch(e){rec=null;$('heard').textContent='Non riesco ad avviare il microfono.'}
+  try{r.start();on=true;$('mic').classList.add('live');$('heard').textContent=always?'In ascolto: di’ “'+CFG.name+'…” e il comando':'Ti ascolto… tocca di nuovo il microfono per fermarmi'}catch(e){rec=null;$('heard').textContent='Non riesco ad avviare il microfono.'}
 }
 $('always').onchange=()=>{stopRec();if($('always').checked)start()};
 $('mic').onclick=()=>{
